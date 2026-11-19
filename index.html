@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Zone 5 Running Lab</title>
+<script src="https://telegram.org/js/telegram-web-app.js?59"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -184,6 +185,54 @@ details.card summary::-webkit-details-marker { display: none; }
 .tabs button.on .ti::after { border-color: var(--bg); opacity: 1; }
 #ttl { position: absolute; left: -9999px; }
 @media (prefers-reduced-motion: no-preference) { .chip, .btn, .tabs button { transition: background .15s, color .15s; } }
+
+/* план */
+.lbl { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: -4px; }
+.fld input[type="date"] { min-height: 46px; -webkit-appearance: none; appearance: none; }
+.big.sm { font-size: 30px; line-height: 1.1; }
+.big.sm small { display: block; margin: 6px 0 0; font: 800 22px var(--display); color: #f6f6f7; letter-spacing: 0; }
+.pchart { width: 100%; height: auto; display: block; }
+.pchart .ax { fill: var(--muted); font: 600 9px var(--body); }
+.pb.z2 { fill: var(--z2); } .pb.z3 { fill: var(--z3); } .pb.z4 { fill: var(--z4); } .pb.z5 { fill: var(--z5); }
+.pb.cur { stroke: var(--ink); stroke-width: 2; }
+.phs { display: flex; flex-direction: column; gap: 6px; }
+.ph { display: grid; grid-template-columns: 14px auto 1fr; gap: 8px; align-items: baseline; font-size: 13px; }
+.ph i { width: 12px; height: 12px; border-radius: 3px; align-self: center; }
+.ph span { color: var(--muted); font-size: 12px; }
+.wk { gap: 10px; }
+.wk.now { border-color: var(--ink); }
+.wk summary { gap: 10px; }
+.wk summary > div:first-child { min-width: 0; }
+.wk summary .sub { margin: 3px 0 0; }
+.wkm { margin-left: auto; text-align: right; }
+.wkm b { display: block; font: 700 20px/1 var(--display); }
+.wkm span { font-size: 11px; color: var(--muted); }
+.days { display: flex; flex-direction: column; }
+.day { display: grid; grid-template-columns: 28px 1fr auto 30px; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.day.rest { grid-template-columns: 28px 1fr; color: var(--muted); }
+.day.rest b { font-weight: 500; }
+.dw { font: 700 11px var(--display); color: var(--muted); }
+.dt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dt b { font-size: 14px; font-weight: 600; }
+.dt b em { font: normal 800 14px var(--display); }
+.dt span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dt .dn { font-style: italic; }
+.day.race .dt b { font: 800 15px var(--display); }
+.day.done .dt { opacity: .45; }
+.day.done .dt b { text-decoration: line-through; }
+.chk { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line); background: transparent; cursor: pointer; position: relative; padding: 0; }
+.chk.on { background: var(--ink); border-color: var(--ink); }
+.chk.on::after { content: ""; position: absolute; left: 9px; top: 5px; width: 6px; height: 11px; border: solid var(--on-ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+/* strava */
+.err { margin: 0; font-size: 13px; font-weight: 600; }
+.soon.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.tr.s3 { grid-template-columns: 1.3fr 1fr 1fr; }
+.runs { display: flex; flex-direction: column; }
+.run { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.run > div { flex: 1; min-width: 0; }
+.run b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run > div span { font-size: 12px; color: var(--muted); }
+#view > .chips.seg { margin-bottom: 0; }
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -203,6 +252,7 @@ details.card summary::-webkit-details-marker { display: none; }
 <h1 id="ttl"></h1>
 <main id="view"></main>
 <nav class="tabs" aria-label="Розділи"></nav>
+<script src="config.js"></script>
 <script>
 // ===== Zone 5 — розрахунки =====
 const DIST = {
@@ -458,7 +508,201 @@ function lactateAnalysis(rows) {
   return { pts, base, lt1: at(lt1Target), lt2: at(4.0), nor: [at(2.0), at(3.5)] };
 }
 
-if (false) module.exports = { DIST, parseTime, fmtTime, vdotFrom, predictTime, danielsPaces, buildPaces, sessionsFor, METHODS, longRecs, hrZones, lactateAnalysis, riegel, fmtSplit };
+
+// ===== Плани підготовки =====
+const PLAN_METHODS = ['daniels', 'norway', 'pfitz', 'canova', 'hudson', 'seiler'];
+const PLAN_WEEKS = [4, 8, 10, 12, 16];
+const PHASES = {
+  base: { name: 'База', about: 'Аеробна основа, техніка, легка швидкість' },
+  build: { name: 'Розвиток', about: 'Поріг і VO₂max, обсяг росте' },
+  spec: { name: 'Специфічна', about: 'Робота в темпі цільового старту' },
+  taper: { name: 'Підведення', about: 'Обсяг вниз, інтенсивність тримаємо' },
+};
+const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+// Розкладка днів: Q — якісне, E — легке, R — відновлювальне, L — довга
+const LAYOUT = {
+  3: { 1: 'Q1', 3: 'E', 6: 'L' },
+  4: { 1: 'Q1', 2: 'E', 4: 'Q2', 6: 'L' },
+  5: { 1: 'Q1', 2: 'E', 3: 'Q2', 5: 'E', 6: 'L' },
+  6: { 0: 'R', 1: 'Q1', 2: 'E', 3: 'Q2', 5: 'E', 6: 'L' },
+  7: { 0: 'R', 1: 'Q1', 2: 'E', 3: 'Q2', 4: 'R', 5: 'E', 6: 'L' },
+};
+const MIN_WEEK_KM = { '1500': 15, '3k': 15, '5k': 15, '10k': 20, 'hm': 30, 'm': 40 };
+
+function phaseSplit(weeks, tk) {
+  const taper = tk === 'm' && weeks >= 12 ? 3 : weeks >= 10 ? 2 : 1;
+  const R = weeks - taper;
+  const spec = Math.max(1, Math.round(R * 0.35));
+  const build = Math.max(1, Math.round(R * 0.35));
+  const base = Math.max(0, R - spec - build);
+  return [...Array(base).fill('base'), ...Array(build).fill('build'), ...Array(spec).fill('spec'), ...Array(taper).fill('taper')];
+}
+
+// Якісне тренування: q(назва, повтори, {dist|dur}, темп, відпочинок, зона, extra)
+function Q(title, reps, len, pace, rest, zone, extra = {}) {
+  return Object.assign({ title, reps: Math.max(1, Math.round(reps)), pace, rest, zone }, len, extra);
+}
+const lerp = (a, b, f) => a + (b - a) * f;
+
+function qualityFor(method, phase, f, P, which) {
+  const tk = P.target, rp = P.rp, r = P.race, isLong = tk === 'hm' || tk === 'm';
+  const pc = (x) => rp / x;
+  const strides = Q('Легкий біг + розкатки', 6, { dist: 100 }, P.r, 'повне', 2, { note: '30–40 хв легко, наприкінці 6 × 100 м легко-швидко.', easyBase: 7 });
+  const specReps = { '1500': [6, 400], '3k': [5, 800], '5k': [5, 1000], '10k': [5, 1600], 'hm': [3, 4000], 'm': [3, 5000] }[tk];
+  const M = {
+    daniels: {
+      base: [Q('R — повторення', lerp(6, 8, f), { dist: 200 }, P.r, '200 м підтюпцем', 5), Q('T — темпо-біг', 1, { dur: Math.round(lerp(15, 20, f)) }, P.t, '—', 4)],
+      build: [Q('I — інтервали', lerp(4, 6, f), { dist: tk === 'm' ? 1200 : 1000 }, P.i, '3 хв підтюпцем', 5), Q('T — крейсерські', lerp(3, 5, f), { dist: 1600 }, P.t, '1 хв', 4)],
+      spec: isLong
+        ? [Q('T — крейсерські', lerp(4, 5, f), { dist: 1600 }, P.t, '1 хв', 4), Q(tk === 'm' ? 'M — марафонський темп' : 'Темп півмарафону', 1, { dist: Math.round(lerp(tk === 'm' ? 12 : 8, tk === 'm' ? 19 : 12, f)) * 1000 }, rp, '—', 3)]
+        : [Q('I — інтервали', lerp(5, 6, f), { dist: 1000 }, P.i, '3 хв підтюпцем', 5), Q('T + R', 2, { dur: 10 }, P.t, '2 хв, потім 4 × 200 м R', 4)],
+      taper: [isLong ? Q('T — крейсерські', 2, { dist: 1600 }, P.t, '1 хв', 4) : Q('I — гостріння', 3, { dist: 1000 }, P.i, '3 хв', 5), strides],
+    },
+    norway: {
+      base: [Q('Поріг · 1000 м', lerp(6, 8, f), { dist: 1000 }, [r.hm, r['15k']], '1 хв', 4, { lact: '2,0–3,0' }), Q('Поріг · 6 хв', 4, { dur: 6 }, [r['15k'], r['10k']], '1 хв', 4, { lact: '2,5–3,0' }), Q('Поріг · 400 м', lerp(12, 16, f), { dist: 400 }, [r['10k'] + 2, r['10k'] - 3], '30 с', 4, { lact: '≈3,0' })],
+      build: [Q('Поріг · 1000 м', lerp(8, 10, f), { dist: 1000 }, [r.hm, r['15k']], '1 хв', 4, { lact: '2,5–3,0' }), Q('Поріг · 6 хв', 5, { dur: 6 }, [r['15k'], r['10k']], '1 хв', 4, { lact: '3,0–3,5' }), Q('Поріг · 400 м', lerp(16, 20, f), { dist: 400 }, [r['10k'] + 2, r['10k'] - 3], '30 с', 4, { lact: '≈3,5' })],
+      spec: [Q('Поріг · 1000 м', 10, { dist: 1000 }, [r.hm, r['15k']], '1 хв', 4, { lact: '2,5–3,0' }), isLong ? Q('Поріг · 10 хв', 3, { dur: 10 }, [r.hm + 3, r.hm - 2], '1 хв', 4, { lact: '2,5–3,0' }) : Q('Поріг · 6 хв', 6, { dur: 6 }, [r['15k'], r['10k']], '1 хв', 4, { lact: '3,0–3,5' }), Q('Поріг · 400 м', lerp(20, 25, f), { dist: 400 }, [r['10k'] + 2, r['10k'] - 3], '30 с', 4, { lact: '≈3,5' })],
+      taper: [Q('Поріг · 1000 м', 6, { dist: 1000 }, [r.hm, r['15k']], '1 хв', 4, { lact: '2,5' }), Q('Поріг · 6 хв', 3, { dur: 6 }, [r['15k'], r['10k']], '1 хв', 4, { lact: '3,0' }), null],
+    },
+    pfitz: {
+      base: [strides, Q('LT — темпо', 1, { dur: Math.round(lerp(15, 20, f)) }, [r.hm, r['15k']], '—', 4)],
+      build: [Q('LT — темпо', 1, { dur: Math.round(lerp(22, 32, f)) }, [r.hm, r['15k']], '—', 4), Q('VO₂max', lerp(5, 6, f), { dist: tk === 'm' || tk === 'hm' ? 1200 : 1000 }, r['5k'], '50–90 % часу відрізка', 5)],
+      spec: isLong
+        ? [Q('LT — інтервали', 2, { dist: 5000 }, [r.hm, r['15k']], '3 хв', 4), Q(tk === 'm' ? 'MP-пробіжка' : 'Темп півмарафону', 1, { dist: Math.round(lerp(tk === 'm' ? 13 : 8, tk === 'm' ? 19 : 12, f)) * 1000 }, rp, '—', 3)]
+        : [Q('VO₂max', lerp(5, 6, f), { dist: 1200 }, r['5k'], '50–90 % часу відрізка', 5), Q('Змагальний темп', 4, { dist: 1600 }, rp, '2–3 хв', 4)],
+      taper: [Q('Налаштування', 4, { dist: 1000 }, r['5k'], '2 хв', 5), tk === 'm' ? Q('MP-пробіжка', 1, { dist: 8000 }, rp, '—', 3) : strides],
+    },
+    canova: {
+      base: [Q('Пагорби', lerp(8, 12, f), { dur: 1 }, null, 'спуск підтюпцем', 5, { note: 'Зусилля 5K, сильна робота рук і стегна.' }), Q('Довгий швидкий', 1, { dist: Math.round(lerp(8, 12, f)) * 1000 }, [pc(0.88), pc(0.92)], '—', 3, { pct: '88–92 %' })],
+      build: [Q('Інтенсивні', lerp(6, 8, f), { dist: 1000 }, [pc(1.03), pc(1.05)], '2 хв', 5, { pct: '103–105 %' }), Q('Екстенсивні', lerp(3, 4, f), { dist: isLong ? 3000 : 2000 }, [pc(0.95), pc(0.97)], '1 хв', 3, { pct: '95–97 %' })],
+      spec: [Q('Специфічні', lerp(specReps[0] - 1, specReps[0], f), { dist: specReps[1] }, [pc(0.99), pc(1.01)], isLong ? '3–4 хв' : '2–3 хв', 4, { pct: '99–101 %' }), Q('Екстенсивні', 3, { dist: 3000 }, [pc(0.97), pc(0.99)], '1 хв', 3, { pct: '97–99 %' })],
+      taper: [Q('Специфічні (скорочено)', Math.max(2, specReps[0] - 2), { dist: specReps[1] }, rp, '3 хв', 4, { pct: '100 %' }), strides],
+    },
+    hudson: {
+      base: [Q('Спринти в гору', 8, { dur: 10 / 60 }, null, 'повне', 5, { note: 'Після 30–40 хв легкого бігу.' }), Q('Фартлек', lerp(6, 8, f), { dur: 1 }, r['5k'], '1 хв легко', 4)],
+      build: [Q('Загальна швидкість', lerp(4, 5, f), { dist: 1000 }, r['5k'], '2 хв', 5), Q('Поріг із прогресією', 1, { dur: Math.round(lerp(20, 25, f)) }, [P.t + 8, P.t - 2], '—', 4)],
+      spec: [Q('Специфічні відрізки', lerp(specReps[0] - 1, specReps[0] + 1, f), { dist: specReps[1] }, rp, isLong ? '3 хв' : '2 хв', tk === 'm' ? 3 : 4), isLong ? Q('Темпо', 1, { dur: 25 }, P.t, '—', 4) : Q('Підтримка швидкості', 4, { dist: 1000 }, r['5k'], '2 хв', 5)],
+      taper: [Q('Специфічні (скорочено)', Math.max(2, specReps[0] - 2), { dist: specReps[1] }, rp, '3 хв', 4), strides],
+    },
+    seiler: {
+      base: [Q('Поріг · 4–6 хв', 4, { dur: Math.round(lerp(4, 6, f)) }, P.t, '2 хв', 4), Q('Хвилинки', 6, { dur: 1 }, r['5k'], '1 хв', 5)],
+      build: [Q('4 × 8 хв', 4, { dur: 8 }, [P.t, r['10k']], '2 хв', 4), Q('5 × 4 хв', 5, { dur: 4 }, P.i, '2–3 хв', 5)],
+      spec: isLong
+        ? [Q('3 × 12 хв', 3, { dur: 12 }, [P.t + 5, P.t], '2 хв', 4), Q('Цільовий темп', 2, { dur: 20 }, rp, '3 хв', 3)]
+        : [Q('4 × 8 хв', 4, { dur: 8 }, [P.t, r['10k']], '2 хв', 4), Q('5 × 4 хв', 5, { dur: 4 }, P.i, '2–3 хв', 5)],
+      taper: [Q('3 × 8 хв', 3, { dur: 8 }, P.t, '2 хв', 4), strides],
+    },
+  };
+  return (M[method][phase] || [])[which] || null;
+}
+
+function sessionKm(s, P) {
+  if (s.easyBase) return s.easyBase;
+  const pace = s.pace == null ? P.i : Array.isArray(s.pace) ? (s.pace[0] + s.pace[1]) / 2 : s.pace;
+  const work = s.dist ? s.reps * s.dist / 1000 : s.reps * s.dur * 60 / pace;
+  return 5 + work * 1.2;
+}
+function structOf(s) {
+  const pre = s.reps > 1 ? s.reps + ' × ' : '';
+  if (s.dist) return pre + (s.dist >= 1000 ? (s.dist / 1000).toLocaleString('uk-UA') + ' км' : s.dist + ' м');
+  return pre + (s.dur < 1 ? Math.round(s.dur * 60) + ' с' : s.dur + ' хв');
+}
+
+function buildPlan(P, o) {
+  const weeks = o.weeks, tk = P.target, method = o.method, days = Math.min(7, Math.max(3, o.days || 5));
+  const phases = phaseSplit(weeks, tk);
+  const startKm = Math.max(Number(o.weeklyKm) || 30, 10);
+  const nonTaper = phases.filter(p => p !== 'taper').length;
+  const peak = startKm * Math.min(1 + 0.03 * nonTaper, 1.3);
+  const taperF = { 1: [0.6], 2: [0.75, 0.55], 3: [0.8, 0.65, 0.5] }[phases.filter(p => p === 'taper').length];
+  const share = { '1500': 0.2, '3k': 0.2, '5k': 0.22, '10k': 0.25, 'hm': 0.3, 'm': 0.37 }[tk];
+  const capLong = { '1500': 16, '3k': 18, '5k': 20, '10k': 24, 'hm': 26, 'm': 34 }[tk];
+  const midE = (P.eSlow + P.eFast) / 2;
+  const capLongTime = (tk === 'm' ? 180 : 150) * 60 / midE;
+  const minLong = Math.min(capLong, { '1500': 8, '3k': 8, '5k': 10, '10k': 12, 'hm': 14, 'm': 18 }[tk]);
+  const warnings = [];
+  if (weeks <= 4 && (tk === 'hm' || tk === 'm')) warnings.push(`4 тижні для дистанції «${DIST[tk].name}» — це лише підведення. План припускає, що базу ви вже маєте.`);
+  if (startKm < MIN_WEEK_KM[tk]) warnings.push(`Обсяг ${Math.round(startKm)} км/тиждень замалий для дистанції «${DIST[tk].name}». Рекомендовано від ${MIN_WEEK_KM[tk]} км.`);
+  if (tk === 'm' && days < 4) warnings.push('Для марафону краще бігати хоча б 4 рази на тиждень.');
+  if (method === 'norway' && days < 6) warnings.push('Повна норвезька схема — 3 порогових тренування на тиждень — від 6 пробіжок. Зараз у плані 2.');
+
+  const out = [];
+  let ti = 0, phaseCount = {}, phaseIdx = {};
+  phases.forEach(p => phaseCount[p] = (phaseCount[p] || 0) + 1);
+  let ntIdx = 0;
+  for (let w = 0; w < weeks; w++) {
+    const ph = phases[w];
+    phaseIdx[ph] = (phaseIdx[ph] || 0) + 1;
+    const f = phaseCount[ph] > 1 ? (phaseIdx[ph] - 1) / (phaseCount[ph] - 1) : 1;
+    let km, recovery = false;
+    if (ph === 'taper') { km = peak * taperF[ti++]; }
+    else {
+      km = nonTaper > 1 ? lerp(startKm, peak, ntIdx / (nonTaper - 1)) : startKm;
+      if (ntIdx % 4 === 3 && ntIdx < nonTaper - 1) { km *= 0.8; recovery = true; }
+      ntIdx++;
+    }
+    const isRace = w === weeks - 1;
+    const layout = Object.assign({}, LAYOUT[days]);
+    if (method === 'norway' && days >= 6 && ph !== 'taper') layout[5] = 'Q3';
+    if (recovery) for (const k in layout) if (layout[k] === 'Q2' || layout[k] === 'Q3') layout[k] = 'E';
+    const dayList = [];
+    // довга
+    let longKm = Math.max(minLong, Math.min(capLong, capLongTime, km * share));
+    if (ph === 'taper') longKm *= 0.7;
+    if (recovery) longKm *= 0.85;
+    let longType;
+    if (method === 'norway') longType = { title: 'Довга легка (< LT1)', pace: [P.eSlow + 10, P.eSlow - 5], lact: '< 2,0', note: 'Лактат нижче 2 ммоль увесь час.' };
+    else if (ph === 'spec' && (tk === 'hm' || tk === 'm') && w % 2 === 0) longType = { title: 'Довга зі специфічним фінішем', pace: [P.eFast, P.rp], note: `Останні ${tk === 'm' ? '8–14' : '5–8'} км у цільовому темпі.` };
+    else if ((ph === 'build' || ph === 'spec') && w % 2 === 1) longType = { title: 'Довга прогресивна', pace: [P.eSlow, P.m], note: 'Перші 2/3 легко, далі швидше до марафонського темпу.' };
+    else longType = { title: 'Довга легка', pace: [P.eSlow, P.eFast], note: 'Розмовний темп.' };
+
+    let qKm = 0, easyCount = 0, recCount = 0;
+    const raceDow = isRace ? (o.raceDow ?? 6) : -1;
+    for (let d = 0; d < 7; d++) {
+      let slot = layout[d];
+      if (isRace) {
+        if (d === raceDow) { dayList.push({ d, type: 'race', title: `СТАРТ · ${DIST[tk].name}`, struct: (Math.round(DIST[tk].km * 10) / 10).toLocaleString('uk-UA') + ' км', pace: P.rp, km: DIST[tk].km, zone: 5, note: P.goalPace ? `Ціль ${fmtTime(P.rp * DIST[tk].km)}` : `Прогноз ${fmtTime(P.rp * DIST[tk].km)}` }); continue; }
+        if (d > raceDow) { dayList.push({ d, type: 'rest', title: 'Відновлення після старту' }); continue; }
+        if (d === raceDow - 1) { dayList.push({ d, type: 'rest', title: 'Відпочинок або 15–20 хв розминки' }); continue; }
+        if (slot === 'L') slot = 'E';
+        if (slot === 'Q2' || slot === 'Q3') slot = 'E';
+      }
+      if (!slot) { dayList.push({ d, type: 'rest', title: 'Відпочинок' }); continue; }
+      if (slot === 'L') { dayList.push({ d, type: 'long', title: longType.title, km: longKm, pace: longType.pace, lact: longType.lact, note: longType.note, zone: 2 }); continue; }
+      if (slot === 'E') { easyCount++; dayList.push({ d, type: 'easy' }); continue; }
+      if (slot === 'R') { recCount++; dayList.push({ d, type: 'rec' }); continue; }
+      const qi = slot === 'Q1' ? 0 : slot === 'Q2' ? 1 : 2;
+      let s = qualityFor(method, ph, f, P, qi);
+      if (isRace && s) s = Object.assign({}, s, { reps: Math.max(2, Math.round(s.reps * 0.6)), title: s.title + ' (легше)' });
+      if (!s) { easyCount++; dayList.push({ d, type: 'easy' }); continue; }
+      let k = sessionKm(s, P);
+      // одне тренування не більше ~30 % тижневого обсягу
+      const lim = Math.max(9, km * 0.3);
+      if (k > lim && !s.easyBase) {
+        if (s.reps === 1 && s.dist) s = Object.assign({}, s, { dist: Math.max(5000, Math.floor((lim - 5) / 1.2) * 1000) });
+        else s = Object.assign({}, s, { reps: Math.max(2, Math.floor(s.reps * (lim - 5) / (k - 5))) });
+        k = sessionKm(s, P);
+      }
+      qKm += k;
+      dayList.push({ d, type: s.easyBase ? 'easy-strides' : 'q', title: s.title, struct: structOf(s), pace: s.pace, rest: s.rest, zone: s.zone, lact: s.lact, pct: s.pct, note: s.note, km: k });
+    }
+    const raceKm = isRace ? DIST[tk].km : 0;
+    const rem = km - (isRace ? 0 : longKm) - qKm - raceKm;
+    const units = easyCount + recCount * 0.7;
+    let easyKm = units > 0 ? rem / units : 0;
+    easyKm = Math.max(isRace ? 4 : 5, Math.min(easyKm, longKm * 0.75));
+    for (const dd of dayList) {
+      if (dd.type === 'easy') Object.assign(dd, { title: 'Легкий біг', km: easyKm, pace: [P.eSlow, P.eFast], zone: 2 });
+      if (dd.type === 'rec') Object.assign(dd, { title: 'Відновлювальна', km: Math.max(4, easyKm * 0.7), pace: [P.recSlow, P.recFast], zone: 1 });
+      if (dd.type === 'easy-strides') dd.zone = 2;
+    }
+    const total = dayList.reduce((s, x) => s + (x.km || 0), 0);
+    out.push({ n: w + 1, phase: ph, recovery, km: total, days: dayList, race: isRace });
+  }
+  return { weeks: out, warnings, peak: Math.max(...out.map(w => w.km)), total: out.reduce((s, w) => s + w.km, 0), longest: Math.max(...out.flatMap(w => w.days.filter(d => d.type === 'long').map(d => d.km)), 0) };
+}
+
+if (false) module.exports = { DIST, parseTime, fmtTime, vdotFrom, predictTime, danielsPaces, buildPaces, sessionsFor, METHODS, longRecs, hrZones, lactateAnalysis, riegel, fmtSplit, buildPlan, PLAN_METHODS, PLAN_WEEKS, PHASES, DOW };
 
 </script>
 <script>
@@ -481,17 +725,55 @@ const DEFAULT = {
   lactDate: '', lactTests: [],
   pc: { mode: 'pace', dist: '10', time: '45:00', pace: '4:30', speed: '12' },
   theme: 'dark',
+  plan: { method: 'daniels', weeks: 12, days: 5, raceDate: '' }, planView: 'plan', planDone: {},
 };
 let S;
 try { S = Object.assign({}, structuredClone(DEFAULT), JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) { S = structuredClone(DEFAULT); }
 S.pbs = Object.assign({}, DEFAULT.pbs, S.pbs); S.pc = Object.assign({}, DEFAULT.pc, S.pc);
-function save() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { } }
+function fixState() { S.plan = Object.assign({}, DEFAULT.plan, S.plan); S.planDone = S.planDone || {}; S.planView = S.planView || 'plan'; }
+fixState();
+// ---- Telegram Mini App: хмарне сховище (синхронізація між пристроями) ----
+const TG = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) ? Telegram.WebApp : null;
+const CS = TG && TG.CloudStorage && TG.isVersionAtLeast && TG.isVersionAtLeast('6.9') ? TG.CloudStorage : null;
+const CHUNK = 3800; // ліміт Telegram — 4096 символів на ключ
+let cloudTimer = null;
+function cloudSave() {
+  if (!CS) return;
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(() => {
+    const s = JSON.stringify(Object.assign({}, S, { theme: S.theme }));
+    const n = Math.ceil(s.length / CHUNK);
+    for (let i = 0; i < n; i++) CS.setItem('z5_' + i, s.slice(i * CHUNK, (i + 1) * CHUNK));
+    CS.setItem('z5n', String(n));
+  }, 800);
+}
+function cloudLoad() {
+  if (!CS) return;
+  CS.getItem('z5n', (err, nStr) => {
+    const n = Number(nStr);
+    if (err || !n) { cloudSave(); return; } // перший запуск — вивантажуємо локальні дані
+    const keys = Array.from({ length: n }, (_, i) => 'z5_' + i);
+    CS.getItems(keys, (err2, vals) => {
+      if (err2 || !vals) return;
+      try {
+        const loaded = JSON.parse(keys.map(k => vals[k] || '').join(''));
+        S = Object.assign({}, structuredClone(DEFAULT), loaded);
+        S.pbs = Object.assign({}, DEFAULT.pbs, S.pbs); S.pc = Object.assign({}, DEFAULT.pc, S.pc); fixState();
+        try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { }
+        render(true);
+      } catch (e) { }
+    });
+  });
+}
+function haptic() { try { TG && TG.HapticFeedback && TG.HapticFeedback.selectionChanged(); } catch (e) { } }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { } cloudSave(); }
 
 const TABS = [
-  { id: 'pace', label: 'Темп' }, { id: 'intervals', label: 'Інтервали' }, { id: 'long', label: 'Довгі' },
+  { id: 'pace', label: 'Темп' }, { id: 'intervals', label: 'Інтервали' }, { id: 'plan', label: 'План' },
   { id: 'zones', label: 'Зони' }, { id: 'lactate', label: 'Лактат' }, { id: 'profile', label: 'Профіль' },
 ];
 let tab = (location.hash || '').slice(1);
+if (tab === 'long') tab = 'plan';
 if (!TABS.some(t => t.id === tab)) tab = 'pace';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -522,7 +804,7 @@ function chips(items, cur, act, cls = '') {
   return `<div class="chips ${cls}">${items.map(([v, l]) => `<button type="button" class="chip${String(v) === String(cur) ? ' on' : ''}" data-act="${act}" data-v="${v}">${l}</button>`).join('')}</div>`;
 }
 function exampleNote() {
-  return S.example ? `<div class="note">Зараз показано <b>приклад даних</b>. Внесіть свої результати й пульс у <a href="#profile" data-tab="profile">Профілі</a> або підтягніть зі Strava в Android-застосунку.</div>` : '';
+  return S.example ? `<div class="note">Зараз показано <b>приклад даних</b>. Внесіть свої результати й пульс у <a href="#profile" data-tab="profile">Профілі</a> або підтягніть зі Strava.</div>` : '';
 }
 function getSet(path, val) {
   const ks = path.split('.'); let o = S;
@@ -771,10 +1053,157 @@ function viewLactate() {
   </div></section>` : ''}`;
 }
 
+
+// ---------- ПЛАН ----------
+const PLAN_NAMES = { daniels: 'Деніелс', norway: 'Норвезька', pfitz: 'Пфітцінгер', canova: 'Канова', hudson: 'Хадсон', seiler: '80/20' };
+const MONTHS = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+const dShort = (d) => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+function planDates(weeks, raceDate) {
+  if (!raceDate) return null;
+  const rd = new Date(raceDate + 'T12:00:00');
+  if (isNaN(rd)) return null;
+  const raceDow = (rd.getDay() + 6) % 7;
+  const monRace = new Date(rd); monRace.setDate(rd.getDate() - raceDow);
+  const start = new Date(monRace); start.setDate(monRace.getDate() - (weeks - 1) * 7);
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const cur = Math.floor((today - start) / 86400000 / 7);
+  return { start, raceDow, cur, rd };
+}
+function planSig() { const p = S.plan; return [S.target, p.method, p.weeks, p.days, p.raceDate].join('|'); }
+function planChart(pl, cur) {
+  const W = 340, H = 120, b = 18, t = 8, n = pl.weeks.length, gap = n > 12 ? 3 : 5;
+  const bw = (W - gap * (n - 1)) / n, mx = Math.max(...pl.weeks.map(w => w.km));
+  const zc = { base: 'z2', build: 'z3', spec: 'z4', taper: 'z5' };
+  return `<svg class="pchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Обсяг по тижнях">${pl.weeks.map((w, i) => {
+    const h = (w.km / mx) * (H - b - t), x = i * (bw + gap), y = H - b - h;
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" class="pb ${zc[w.phase]}${i === cur ? ' cur' : ''}"/>` + (n <= 12 || i % 2 === 0 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle" class="ax">${w.n}</text>` : '');
+  }).join('')}</svg>`;
+}
+function viewPlan() {
+  const seg = chips([['plan', 'План підготовки'], ['long', 'Довгі й легкі']], S.planView, 'pview', 'seg');
+  if (S.planView === 'long') return `${seg}${viewLong()}`;
+  const P = buildPaces(S);
+  if (!P) return seg + emptyPB();
+  const o = S.plan;
+  const dates = planDates(o.weeks, o.raceDate);
+  const pl = buildPlan(P, { weeks: o.weeks, days: o.days, method: o.method, weeklyKm: S.weeklyKm, raceDow: dates ? dates.raceDow : 6 });
+  const sig = planSig();
+  const done = S.planDone[sig] || {};
+  const cur = dates ? dates.cur : -1;
+  const warn = [...pl.warnings];
+  if (dates && cur > 0 && cur < o.weeks) warn.unshift(`До старту ${o.weeks - cur} тиж. — план уже йде, зараз тиждень ${cur + 1}.`);
+  if (dates && cur >= o.weeks) warn.unshift('Дата старту вже минула. Оберіть нову дату.');
+  const phaseLegend = Object.keys(PHASES).filter(k => pl.weeks.some(w => w.phase === k)).map(k => {
+    const ws = pl.weeks.filter(w => w.phase === k);
+    return `<div class="ph"><i class="${{ base: 'z2', build: 'z3', spec: 'z4', taper: 'z5' }[k]}"></i><b>${PHASES[k].name}</b><span>${ws.length} тиж. · ${PHASES[k].about}</span></div>`;
+  }).join('');
+  const doneCount = Object.values(done).filter(Boolean).length;
+  const totalRuns = pl.weeks.reduce((s, w) => s + w.days.filter(d => d.type !== 'rest').length, 0);
+  const openW = cur >= 0 && cur < o.weeks ? cur : 0;
+  const week = (w, i) => {
+    let range = '';
+    if (dates) { const s = new Date(dates.start); s.setDate(s.getDate() + i * 7); const e = new Date(s); e.setDate(s.getDate() + 6); range = `${dShort(s)} – ${dShort(e)}`; }
+    const runs = w.days.filter(d => d.type !== 'rest');
+    const wd = runs.filter(d => done[`${w.n}-${d.d}`]).length;
+    return `<details class="card wk${i === cur ? ' now' : ''}"${i === openW ? ' open' : ''}>
+      <summary><div><h3>Тиждень ${w.n}${i === cur ? ' · зараз' : ''}</h3><p class="sub">${PHASES[w.phase].name}${w.recovery ? ' · розвантажувальний' : ''}${range ? ' · ' + range : ''}</p></div>
+      <div class="wkm"><b>${Math.round(w.km)}</b><span>км · ${wd}/${runs.length}</span></div></summary>
+      <div class="days">${w.days.map(d => {
+        if (d.type === 'rest') return `<div class="day rest"><span class="dw">${DOW[d.d]}</span><div class="dt"><b>${d.title}</b></div></div>`;
+        const key = `${w.n}-${d.d}`, isDone = !!done[key];
+        const tags = [d.lact ? `лактат ${d.lact}` : '', d.pct ? d.pct : '', d.rest && d.rest !== '—' ? `відп. ${d.rest}` : ''].filter(Boolean);
+        return `<div class="day${isDone ? ' done' : ''}${d.type === 'race' ? ' race' : ''}">
+          <span class="dw">${DOW[d.d]}</span>
+          <div class="dt"><b>${d.struct ? `<em>${d.struct}</em> ` : ''}${esc(d.title)}</b>
+            <span>${d.pace != null ? pr(d.pace) + ' /км · ' : ''}≈${Math.round(d.km)} км${tags.length ? ' · ' + tags.join(' · ') : ''}</span>
+            ${d.note ? `<span class="dn">${esc(d.note)}</span>` : ''}</div>
+          ${zpill(d.zone || 2)}
+          <button type="button" class="chk${isDone ? ' on' : ''}" data-act="pdone" data-v="${key}" aria-label="Позначити як виконане" aria-pressed="${isDone}"></button>
+        </div>`;
+      }).join('')}</div></details>`;
+  };
+  return `${seg}${exampleNote()}
+  <section class="card"><h3>Налаштування плану</h3>
+    <div class="lbl">Старт</div>${chips(DKEYS.map(k => [k, DIST[k].short]), S.target, 'target', 'scroll')}
+    <div class="lbl">Методика</div>${chips(PLAN_METHODS.map(m => [m, PLAN_NAMES[m]]), o.method, 'pmethod', 'scroll')}
+    <div class="lbl">Тривалість, тижнів</div>${chips(PLAN_WEEKS.map(w => [w, w]), o.weeks, 'pweeks', 'seg')}
+    <div class="lbl">Пробіжок на тиждень</div>${chips([3, 4, 5, 6, 7].map(d => [d, d]), o.days, 'pdays', 'seg')}
+    <div class="grid2">${field('Зараз, км/тиждень', 'weeklyKm', S.weeklyKm)}
+      <label class="fld" for="f_race"><span>Дата старту</span><input id="f_race" type="date" data-k="plan.raceDate" value="${esc(o.raceDate)}"></label></div>
+  </section>
+  <section class="hero plan">
+    ${track(360, 200, 9, 7)}
+    <div class="hero-in">
+      <p class="eyebrow">${o.weeks} тижнів · ${PLAN_NAMES[o.method]}</p>
+      <div class="big sm">${DIST[S.target].name}<small>${fmtTime(P.rp * DIST[S.target].km)}</small></div>
+      <div class="stats">
+        <div><span>Темп старту</span><b>${fp(P.rp)}</b></div>
+        <div><span>Пік, км/тижд</span><b>${Math.round(pl.peak)}</b></div>
+        <div><span>Найдовша</span><b>${Math.round(pl.longest)} км</b></div>
+        <div><span>Виконано</span><b>${doneCount}/${totalRuns}</b></div>
+      </div>
+    </div>
+  </section>
+  ${warn.length ? `<div class="note">${warn.map(esc).join('<br>')}</div>` : ''}
+  <section class="card"><h3>Обсяг по тижнях</h3>${planChart(pl, cur)}<div class="phs">${phaseLegend}</div></section>
+  ${pl.weeks.map(week).join('')}
+  <p class="foot">Це орієнтовний план за методикою, а не персональний план тренера. Слухайте тіло: при болю, хворобі чи поганому сні замінюйте якісне тренування легким. Розминка 15–20 хв і заминка 10 хв уже враховані в кілометрах.</p>`;
+}
+
+// ---------- STRAVA (Telegram) ----------
+const API = String(window.Z5_API || '').replace(/\/$/, '');
+const SV = { connected: false, athlete: null, data: null, busy: false, error: null, checked: false, waiting: false };
+async function api(path, extra) {
+  const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ initData: TG.initData }, extra || {})) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Сервер відповів ' + r.status);
+  return j;
+}
+function rerenderProfile() { if (tab === 'profile') render(true); }
+async function stravaRefresh(force) {
+  if (!TG || !API || SV.busy) return;
+  SV.busy = true; rerenderProfile();
+  try {
+    let j = await api('/api/strava/status');
+    SV.connected = j.connected; SV.athlete = j.athlete; SV.data = j.data;
+    if (j.connected && (force || !j.data || Date.now() - j.data.at > 6 * 3600e3)) {
+      j = await api('/api/strava/sync', { force: !!force });
+      SV.data = j.data;
+    }
+    SV.error = null;
+  } catch (e) { SV.error = e.message || 'Не вдалося зв’язатися із сервером.'; }
+  SV.busy = false; SV.checked = true; rerenderProfile();
+}
+function stravaCard() {
+  const head = '<section class="card"><h3>Strava</h3>';
+  if (!TG) return `${head}<p class="sub">Strava підключається в Telegram-боті <b>@zone5crew_bot</b>: відкрийте Zone 5 там.</p></section>`;
+  if (!API) return `${head}<p class="sub">Сервер Strava ще не налаштовано.</p></section>`;
+  const err = SV.error ? `<p class="err">${esc(SV.error)}</p>` : '';
+  if (!SV.checked && SV.busy) return `${head}<p class="sub">Перевіряю підключення…</p></section>`;
+  if (!SV.connected) return `${head}<p class="sub">Підтягніть найкращі результати, тижневий обсяг, ЧСС макс і останні пробіжки.</p>
+    <button type="button" class="btn" data-act="sconnect" ${SV.busy ? 'disabled' : ''}>Підключити Strava</button>
+    ${SV.waiting ? '<p class="sub">Після дозволу у Strava поверніться сюди — дані підтягнуться самі.</p>' : ''}${err}</section>`;
+  const D = SV.data;
+  const upd = D ? new Date(D.at) : null;
+  let h = `${head}<div class="integ"><div><b>${esc(SV.athlete || 'Підключено')}</b><span>${SV.busy ? 'Синхронізую…' : upd ? `Оновлено ${pad(upd.getDate())}.${pad(upd.getMonth() + 1)} о ${upd.getHours()}:${pad(upd.getMinutes())}` : 'Ще не синхронізовано'}</span></div><span class="soon on">STRAVA</span></div>`;
+  if (D) {
+    const keys = ['5k', '10k', 'hm', 'm'].filter(k => D.bests && D.bests[k]);
+    if (keys.length) h += `<div class="tbl"><div class="tr th s3"><span>Дистанція</span><span>Strava</span><span>У профілі</span></div>${keys.map(k => `<div class="tr s3"><span>${DIST[k].name}</span><b>${fmtTime(D.bests[k].sec)}</b><span class="mut">${esc(S.pbs[k]) || '—'}</span></div>`).join('')}</div>`;
+    h += `<div class="grid2"><div class="out"><span>Обсяг, 4 тижні</span><b>${Math.round(D.weeklyKm || 0)}<small>км/тижд</small></b></div><div class="out"><span>ЧСС макс</span><b>${D.maxHr ? Math.round(D.maxHr) : '—'}<small>уд/хв</small></b></div></div>`;
+    h += `<button type="button" class="btn" data-act="sapply">Внести в профіль</button><p class="sub">Рекорди замінюються, лише якщо у Strava кращий час. ЧСС макс — лише якщо вища.</p>`;
+    if (D.runs && D.runs.length) {
+      const Z = hrZones(S);
+      const zoneOf = (hr) => { if (!hr || !Z) return null; for (let i = Z.zones.length - 1; i >= 0; i--) if (hr >= Z.zones[i].lo) return i + 1; return 1; };
+      h += `<div class="lbl">Останні пробіжки</div><div class="runs">${D.runs.slice(0, 8).map(r => { const dt = new Date(r.date), z = zoneOf(r.avgHr); return `<div class="run"><div><b>${esc(r.name)}</b><span>${pad(dt.getDate())}.${pad(dt.getMonth() + 1)} · ${r.km.toFixed(1)} км · ${fp(r.sec / r.km)} /км${r.avgHr ? ' · ' + Math.round(r.avgHr) + ' уд/хв' : ''}</span></div>${z ? zpill(z) : ''}</div>`; }).join('')}</div>`;
+    }
+  }
+  h += `<div class="row"><button type="button" class="btn ghost" data-act="ssync" ${SV.busy ? 'disabled' : ''}>Синхронізувати</button><button type="button" class="btn ghost" data-act="soff" ${SV.busy ? 'disabled' : ''}>Відключити</button></div>${err}</section>`;
+  return h;
+}
+
 // ---------- ПРОФІЛЬ ----------
 function viewProfile() {
   const integ = [
-    ['Strava', 'Рекорди, тижневий обсяг, ЧСС макс, останні пробіжки', 'в Android-застосунку'],
     ['Garmin Connect', 'Після схвалення доступу Garmin', 'скоро'],
     ['COROS', 'Після схвалення доступу COROS', 'скоро'],
   ];
@@ -788,6 +1217,7 @@ function viewProfile() {
   <section class="card"><h3>До чого готуюсь</h3>
     ${chips(DKEYS.map(k => [k, DIST[k].short]), S.target, 'target', 'scroll')}
     <div class="grid2">${field('Цільовий час', 'targetTime', S.targetTime, { im: 'text', ph: 'необов’язково' })}${field('Обсяг, км/тиждень', 'weeklyKm', S.weeklyKm)}</div></section>
+  ${stravaCard()}
   <section class="card"><h3>Інтеграції</h3>
     ${integ.map(([n, d, st]) => `<div class="integ"><div><b>${n}</b><span>${d}</span></div><span class="soon">${st}</span></div>`).join('')}
   </section>
@@ -799,7 +1229,7 @@ function viewProfile() {
 }
 
 // ---------- РЕНДЕР ----------
-const VIEWS = { pace: viewPace, intervals: viewIntervals, long: viewLong, zones: viewZones, lactate: viewLactate, profile: viewProfile };
+const VIEWS = { pace: viewPace, intervals: viewIntervals, plan: viewPlan, zones: viewZones, lactate: viewLactate, profile: viewProfile };
 function render(keepScroll) {
   document.documentElement.dataset.theme = S.theme;
   const y = window.scrollY;
@@ -808,7 +1238,7 @@ function render(keepScroll) {
   document.getElementById('ttl').textContent = TABS.find(t => t.id === tab).label;
   if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
 }
-function go(t) { tab = t; try { history.replaceState(null, '', '#' + t); } catch (e) { location.hash = t; } render(); }
+function go(t) { tab = t; if (t === 'profile' && TG && API && !SV.checked) stravaRefresh(false); try { history.replaceState(null, '', '#' + t); } catch (e) { location.hash = t; } render(); }
 
 document.addEventListener('change', (e) => {
   const k = e.target.dataset.k; if (!k) return;
@@ -821,6 +1251,7 @@ document.addEventListener('change', (e) => {
   save(); render(true);
 });
 document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-act],[data-tab]')) haptic();
   const tb = e.target.closest('[data-tab]');
   if (tb) { e.preventDefault(); go(tb.dataset.tab); return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
@@ -840,6 +1271,33 @@ document.addEventListener('click', (e) => {
     case 'method': S.method = v; break;
     case 'zmethod': S.zoneMethod = v; break;
     case 'theme': S.theme = v; break;
+    case 'pview': S.planView = v; break;
+    case 'pmethod': S.plan.method = v; break;
+    case 'pweeks': S.plan.weeks = Number(v); break;
+    case 'pdays': S.plan.days = Number(v); break;
+    case 'pdone': { const sg = planSig(); const m = S.planDone[sg] = S.planDone[sg] || {}; m[v] = !m[v]; if (!m[v]) delete m[v]; try { m[v] && TG && TG.HapticFeedback.notificationOccurred('success'); } catch (er) { } break; }
+    case 'sconnect':
+      api('/api/strava/start').then(j => { SV.waiting = true; rerenderProfile(); try { TG.openLink(j.url); } catch (er) { location.href = j.url; } }).catch(er => { SV.error = er.message; rerenderProfile(); });
+      return;
+    case 'ssync': stravaRefresh(true); return;
+    case 'soff':
+      if (a.dataset.confirm !== '1') { a.dataset.confirm = '1'; a.textContent = 'Точно відключити?'; return; }
+      SV.busy = true; rerenderProfile();
+      api('/api/strava/disconnect').then(() => { SV.connected = false; SV.data = null; SV.athlete = null; }).catch(er => { SV.error = er.message; }).finally(() => { SV.busy = false; rerenderProfile(); });
+      return;
+    case 'sapply': {
+      const D = SV.data; if (!D) return;
+      for (const k of ['5k', '10k', 'hm', 'm']) {
+        if (!D.bests || !D.bests[k]) continue;
+        const cur = parseTime(S.pbs[k]);
+        if (!(cur > 0) || D.bests[k].sec < cur) S.pbs[k] = fmtTime(D.bests[k].sec);
+      }
+      if (D.weeklyKm > 0) S.weeklyKm = Math.round(D.weeklyKm);
+      if (D.maxHr && (!S.hrMax || D.maxHr > S.hrMax)) S.hrMax = Math.round(D.maxHr);
+      S.example = false;
+      try { TG.HapticFeedback.notificationOccurred('success'); } catch (er) { }
+      break;
+    }
     case 'lradd': S.lactRows.push({ pace: '', hr: '', la: '' }); S.example = false; break;
     case 'lrdel': S.lactRows.splice(Number(v), 1); break;
     case 'ltdel': S.lactTests.splice(Number(v), 1); break;
@@ -865,9 +1323,27 @@ document.addEventListener('click', (e) => {
 });
 window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (VIEWS[t] && t !== tab) { tab = t; render(); } });
 document.querySelector('.tabs').innerHTML = TABS.map(t => `<button type="button" data-tab="${t.id}"><span class="ti ti-${t.id}"></span>${t.label}</button>`).join('');
+if (TG) {
+  document.documentElement.classList.add('tg');
+  try { TG.ready(); TG.expand(); TG.setHeaderColor('#0a0a0b'); TG.setBackgroundColor('#0a0a0b'); TG.setBottomBarColor && TG.setBottomBarColor('#0a0a0b'); } catch (e) { }
+  try { TG.disableVerticalSwipes && TG.disableVerticalSwipes(); } catch (e) { }
+  const u = TG.initDataUnsafe && TG.initDataUnsafe.user;
+  if (u && !S.name) S.name = [u.first_name, u.last_name].filter(Boolean).join(' ');
+}
 render();
+cloudLoad();
+if (TG && API) {
+  stravaRefresh(false);
+  const back = async () => {
+    if (!SV.waiting || document.visibilityState !== 'visible') return;
+    await stravaRefresh(false);
+    if (SV.connected) { SV.waiting = false; rerenderProfile(); }
+  };
+  document.addEventListener('visibilitychange', back);
+  try { TG.onEvent('activated', back); } catch (e) { }
+}
 
 </script>
-<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
+<script>if ('serviceWorker' in navigator && !(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData)) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
 </body>
 </html>
