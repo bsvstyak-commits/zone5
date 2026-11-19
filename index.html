@@ -227,6 +227,9 @@ details.card summary::-webkit-details-marker { display: none; }
 .err { margin: 0; font-size: 13px; font-weight: 600; }
 .soon.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 .tr.s3 { grid-template-columns: 1.3fr 1fr 1fr; }
+.tr.s4 { grid-template-columns: 1.25fr 1fr 1fr .8fr; }
+.bc { display: flex; flex-direction: column; line-height: 1.2; }
+.bc em { font-style: normal; font-size: 11px; color: var(--muted); }
 .runs { display: flex; flex-direction: column; }
 .run { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
 .run > div { flex: 1; min-width: 0; }
@@ -1152,7 +1155,9 @@ function viewPlan() {
 
 // ---------- STRAVA (Telegram) ----------
 const API = String(window.Z5_API || '').replace(/\/$/, '');
-const SV = { connected: false, athlete: null, data: null, busy: false, error: null, checked: false, waiting: false };
+const SV = { connected: false, athlete: null, busy: false, error: null, checked: false, waiting: false, progress: '' };
+const EFF = {}; // кеш best efforts за id активності (на сесію)
+const SKM = { '5k': 5, '10k': 10, 'hm': 21.0975, 'm': 42.195 };
 async function api(path, extra) {
   const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ initData: TG.initData }, extra || {})) });
   const j = await r.json().catch(() => ({}));
@@ -1160,19 +1165,74 @@ async function api(path, extra) {
   return j;
 }
 function rerenderProfile() { if (tab === 'profile') render(true); }
-async function stravaRefresh(force) {
+async function stravaRefresh() {
   if (!TG || !API || SV.busy) return;
   SV.busy = true; rerenderProfile();
   try {
-    let j = await api('/api/strava/status');
-    SV.connected = j.connected; SV.athlete = j.athlete; SV.data = j.data;
-    if (j.connected && (force || !j.data || Date.now() - j.data.at > 6 * 3600e3)) {
-      j = await api('/api/strava/sync', { force: !!force });
-      SV.data = j.data;
-    }
-    SV.error = null;
+    const j = await api('/api/strava/status');
+    SV.connected = j.connected; SV.athlete = j.athlete; SV.error = null;
   } catch (e) { SV.error = e.message || 'Не вдалося зв’язатися із сервером.'; }
   SV.busy = false; SV.checked = true; rerenderProfile();
+  if (SV.connected && (!S.strava || Date.now() - S.strava.at > 12 * 3600e3)) stravaSync('year');
+}
+// кандидати на рекорди: найшвидші пробіжки, довші за дистанцію, і всі старти (Race)
+function candidates(pool) {
+  const ids = new Set();
+  const N = { '5k': 5, '10k': 4, 'hm': 3, 'm': 2 };
+  for (const k in SKM) pool.filter(r => r.km >= SKM[k] * 0.98).sort((x, y) => x.sec / x.km - y.sec / y.km).slice(0, N[k]).forEach(r => ids.add(r.id));
+  pool.filter(r => r.race && r.km >= 4.9).sort((x, y) => x.sec / x.km - y.sec / y.km).slice(0, 15).forEach(r => ids.add(r.id));
+  return [...ids];
+}
+function bestsFrom(ids, runsById) {
+  const b = {};
+  for (const id of ids) {
+    const x = EFF[id]; if (!x || !x.efforts) continue;
+    for (const k in x.efforts) {
+      if (!SKM[k]) continue;
+      const sec = x.efforts[k];
+      if (!b[k] || sec < b[k].sec) b[k] = { sec, date: x.date, name: x.name };
+    }
+  }
+  return b;
+}
+async function stravaSync(scope) {
+  if (!TG || !API || SV.busy) return;
+  SV.busy = true; SV.error = null; SV.progress = 'Завантажую пробіжки…'; rerenderProfile();
+  try {
+    const yearAgo = Date.now() - 365 * 86400e3;
+    const runs = [];
+    for (let page = 1; page <= (scope === 'all' ? 25 : 3); page++) {
+      const j = await api('/api/strava/list', { page });
+      if (!j.connected) { SV.connected = false; throw new Error('Strava відключено. Підключіть знову.'); }
+      SV.athlete = j.athlete || SV.athlete;
+      runs.push(...j.runs);
+      SV.progress = `Завантажено пробіжок: ${runs.length}…`; rerenderProfile();
+      if (!j.more) break;
+      if (scope !== 'all' && j.lastDate && Date.parse(j.lastDate) < yearAgo) break;
+    }
+    runs.sort((x, y) => String(y.date).localeCompare(String(x.date)));
+    const yearRuns = runs.filter(r => Date.parse(r.date) >= yearAgo);
+    const since = Date.now() - 28 * 86400e3;
+    const weeklyKm = runs.filter(r => Date.parse(r.date) > since).reduce((s, r) => s + r.km, 0) / 4;
+    const hrs = yearRuns.map(r => r.maxHr).filter(Boolean);
+    const yIds = candidates(yearRuns), aIds = scope === 'all' ? candidates(runs) : [];
+    const need = [...new Set([...yIds, ...aIds])].filter(id => !EFF[id]);
+    for (let i = 0; i < need.length; i += 5) {
+      SV.progress = `Шукаю рекорди у пробіжках: ${Math.min(i + 5, need.length)} з ${need.length}…`; rerenderProfile();
+      const j = await api('/api/strava/efforts', { ids: need.slice(i, i + 5) });
+      Object.assign(EFF, j.results || {});
+      if (j.error) { SV.error = j.error; break; }
+    }
+    const prev = S.strava || {};
+    S.strava = {
+      at: Date.now(), weeklyKm, maxHr: hrs.length ? Math.max(...hrs) : null,
+      runs: runs.slice(0, 20).map(r => ({ name: r.name, date: r.date, km: r.km, sec: r.sec, avgHr: r.avgHr })),
+      bestsYear: bestsFrom(yIds), checkedYear: yIds.length, found: runs.length,
+      bestsAll: scope === 'all' ? bestsFrom(aIds) : (prev.bestsAll || null), allAt: scope === 'all' ? Date.now() : (prev.allAt || null), checkedAll: scope === 'all' ? aIds.length : prev.checkedAll,
+    };
+    save();
+  } catch (e) { SV.error = e.message || 'Помилка синхронізації.'; }
+  SV.busy = false; SV.progress = ''; rerenderProfile();
 }
 function stravaCard() {
   const head = '<section class="card"><h3>Strava</h3>';
@@ -1183,21 +1243,26 @@ function stravaCard() {
   if (!SV.connected) return `${head}<p class="sub">Підтягніть найкращі результати, тижневий обсяг, ЧСС макс і останні пробіжки.</p>
     <button type="button" class="btn" data-act="sconnect" ${SV.busy ? 'disabled' : ''}>Підключити Strava</button>
     ${SV.waiting ? '<p class="sub">Після дозволу у Strava поверніться сюди — дані підтягнуться самі.</p>' : ''}${err}</section>`;
-  const D = SV.data;
+  const D = S.strava;
   const upd = D ? new Date(D.at) : null;
-  let h = `${head}<div class="integ"><div><b>${esc(SV.athlete || 'Підключено')}</b><span>${SV.busy ? 'Синхронізую…' : upd ? `Оновлено ${pad(upd.getDate())}.${pad(upd.getMonth() + 1)} о ${upd.getHours()}:${pad(upd.getMinutes())}` : 'Ще не синхронізовано'}</span></div><span class="soon on">STRAVA</span></div>`;
+  const pick = S.stravaPick || 'year';
+  let h = `${head}<div class="integ"><div><b>${esc(SV.athlete || 'Підключено')}</b><span>${SV.busy ? esc(SV.progress || 'Синхронізую…') : upd ? `Оновлено ${pad(upd.getDate())}.${pad(upd.getMonth() + 1)} о ${upd.getHours()}:${pad(upd.getMinutes())} · пробіжок: ${D.found}` : 'Ще не синхронізовано'}</span></div><span class="soon on">STRAVA</span></div>`;
   if (D) {
-    const keys = ['5k', '10k', 'hm', 'm'].filter(k => D.bests && D.bests[k]);
-    if (keys.length) h += `<div class="tbl"><div class="tr th s3"><span>Дистанція</span><span>Strava</span><span>У профілі</span></div>${keys.map(k => `<div class="tr s3"><span>${DIST[k].name}</span><b>${fmtTime(D.bests[k].sec)}</b><span class="mut">${esc(S.pbs[k]) || '—'}</span></div>`).join('')}</div>`;
-    h += `<div class="grid2"><div class="out"><span>Обсяг, 4 тижні</span><b>${Math.round(D.weeklyKm || 0)}<small>км/тижд</small></b></div><div class="out"><span>ЧСС макс</span><b>${D.maxHr ? Math.round(D.maxHr) : '—'}<small>уд/хв</small></b></div></div>`;
-    h += `<button type="button" class="btn" data-act="sapply">Внести в профіль</button><p class="sub">Рекорди замінюються, лише якщо у Strava кращий час. ЧСС макс — лише якщо вища.</p>`;
+    const cell = (b) => b ? `<b>${fmtTime(b.sec)}</b><em>${pad(new Date(b.date).getDate())}.${pad(new Date(b.date).getMonth() + 1)}.${String(new Date(b.date).getFullYear()).slice(2)}</em>` : '<span class="mut">—</span>';
+    h += `<div class="tbl"><div class="tr th s4"><span>Дистанція</span><span>За рік</span><span>Весь час</span><span>Профіль</span></div>${['5k', '10k', 'hm', 'm'].map(k => `<div class="tr s4"><span>${DIST[k].name}</span><span class="bc">${cell(D.bestsYear && D.bestsYear[k])}</span><span class="bc">${D.bestsAll ? cell(D.bestsAll[k]) : '<span class="mut">?</span>'}</span><span class="mut">${esc(S.pbs[k]) || '—'}</span></div>`).join('')}</div>`;
+    if (!D.bestsAll) h += `<p class="sub">«Весь час» ще не шукали. Натисніть «Рекорди за весь час» нижче.</p>`;
+    h += `<div class="grid2"><div class="out"><span>Обсяг, 4 тижні</span><b>${Math.round(D.weeklyKm || 0)}<small>км/тижд</small></b></div><div class="out"><span>ЧСС макс за рік</span><b>${D.maxHr ? Math.round(D.maxHr) : '—'}<small>уд/хв</small></b></div></div>`;
+    h += `<div class="lbl">Що внести в профіль</div>${chips([['year', 'Рекорди за рік'], ['all', 'Рекорди за весь час']], pick, 'spick', 'seg')}
+      <button type="button" class="btn" data-act="sapply" ${SV.busy || (pick === 'all' && !D.bestsAll) ? 'disabled' : ''}>Внести в профіль</button>
+      <p class="sub">Результати в профілі замінюються значеннями зі Strava. Для тренувальних темпів краще брати рекорди за рік — вони показують поточну форму. ЧСС макс оновлюється, лише якщо вища.</p>`;
     if (D.runs && D.runs.length) {
       const Z = hrZones(S);
       const zoneOf = (hr) => { if (!hr || !Z) return null; for (let i = Z.zones.length - 1; i >= 0; i--) if (hr >= Z.zones[i].lo) return i + 1; return 1; };
       h += `<div class="lbl">Останні пробіжки</div><div class="runs">${D.runs.slice(0, 8).map(r => { const dt = new Date(r.date), z = zoneOf(r.avgHr); return `<div class="run"><div><b>${esc(r.name)}</b><span>${pad(dt.getDate())}.${pad(dt.getMonth() + 1)} · ${r.km.toFixed(1)} км · ${fp(r.sec / r.km)} /км${r.avgHr ? ' · ' + Math.round(r.avgHr) + ' уд/хв' : ''}</span></div>${z ? zpill(z) : ''}</div>`; }).join('')}</div>`;
     }
   }
-  h += `<div class="row"><button type="button" class="btn ghost" data-act="ssync" ${SV.busy ? 'disabled' : ''}>Синхронізувати</button><button type="button" class="btn ghost" data-act="soff" ${SV.busy ? 'disabled' : ''}>Відключити</button></div>${err}</section>`;
+  h += `<div class="row"><button type="button" class="btn ghost" data-act="ssync" ${SV.busy ? 'disabled' : ''}>Синхронізувати</button><button type="button" class="btn ghost" data-act="sall" ${SV.busy ? 'disabled' : ''}>Рекорди за весь час</button></div>
+    <button type="button" class="btn ghost" data-act="soff" ${SV.busy ? 'disabled' : ''}>Відключити Strava</button>${err}</section>`;
   return h;
 }
 
@@ -1238,7 +1303,7 @@ function render(keepScroll) {
   document.getElementById('ttl').textContent = TABS.find(t => t.id === tab).label;
   if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
 }
-function go(t) { tab = t; if (t === 'profile' && TG && API && !SV.checked) stravaRefresh(false); try { history.replaceState(null, '', '#' + t); } catch (e) { location.hash = t; } render(); }
+function go(t) { tab = t; if (t === 'profile' && TG && API && !SV.checked) stravaRefresh(); try { history.replaceState(null, '', '#' + t); } catch (e) { location.hash = t; } render(); }
 
 document.addEventListener('change', (e) => {
   const k = e.target.dataset.k; if (!k) return;
@@ -1279,19 +1344,19 @@ document.addEventListener('click', (e) => {
     case 'sconnect':
       api('/api/strava/start').then(j => { SV.waiting = true; rerenderProfile(); try { TG.openLink(j.url); } catch (er) { location.href = j.url; } }).catch(er => { SV.error = er.message; rerenderProfile(); });
       return;
-    case 'ssync': stravaRefresh(true); return;
+    case 'ssync': stravaSync('year'); return;
+    case 'sall': stravaSync('all'); return;
+    case 'spick': S.stravaPick = v; break;
     case 'soff':
       if (a.dataset.confirm !== '1') { a.dataset.confirm = '1'; a.textContent = 'Точно відключити?'; return; }
       SV.busy = true; rerenderProfile();
-      api('/api/strava/disconnect').then(() => { SV.connected = false; SV.data = null; SV.athlete = null; }).catch(er => { SV.error = er.message; }).finally(() => { SV.busy = false; rerenderProfile(); });
+      api('/api/strava/disconnect').then(() => { SV.connected = false; SV.athlete = null; S.strava = null; save(); }).catch(er => { SV.error = er.message; }).finally(() => { SV.busy = false; rerenderProfile(); });
       return;
     case 'sapply': {
-      const D = SV.data; if (!D) return;
-      for (const k of ['5k', '10k', 'hm', 'm']) {
-        if (!D.bests || !D.bests[k]) continue;
-        const cur = parseTime(S.pbs[k]);
-        if (!(cur > 0) || D.bests[k].sec < cur) S.pbs[k] = fmtTime(D.bests[k].sec);
-      }
+      const D = S.strava; if (!D) return;
+      const B = (S.stravaPick || 'year') === 'all' ? D.bestsAll : D.bestsYear;
+      if (!B) return;
+      for (const k of ['5k', '10k', 'hm', 'm']) if (B[k]) S.pbs[k] = fmtTime(B[k].sec);
       if (D.weeklyKm > 0) S.weeklyKm = Math.round(D.weeklyKm);
       if (D.maxHr && (!S.hrMax || D.maxHr > S.hrMax)) S.hrMax = Math.round(D.maxHr);
       S.example = false;
@@ -1333,11 +1398,12 @@ if (TG) {
 render();
 cloudLoad();
 if (TG && API) {
-  stravaRefresh(false);
+  stravaRefresh();
   const back = async () => {
     if (!SV.waiting || document.visibilityState !== 'visible') return;
-    await stravaRefresh(false);
-    if (SV.connected) { SV.waiting = false; rerenderProfile(); }
+    SV.checked = false;
+    await stravaRefresh();
+    if (SV.connected) { SV.waiting = false; S.strava = null; stravaSync('year'); }
   };
   document.addEventListener('visibilitychange', back);
   try { TG.onEvent('activated', back); } catch (e) { }
